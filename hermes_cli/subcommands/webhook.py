@@ -49,6 +49,12 @@ def build_webhook_parser(subparsers, *, cmd_webhook: Callable) -> None:
         "--secret", default="", help="HMAC secret (auto-generated if omitted)"
     )
     wh_sub.add_argument(
+        "--verify-token",
+        default="",
+        help="Meta (Facebook/Instagram/WhatsApp) GET verification token. "
+        "Set the same value in the Meta App dashboard callback config.",
+    )
+    wh_sub.add_argument(
         "--deliver-only",
         action="store_true",
         help="Skip the agent — deliver the rendered prompt directly as the "

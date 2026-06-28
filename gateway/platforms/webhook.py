@@ -33,6 +33,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import subprocess
 import time
@@ -97,6 +98,25 @@ def _is_loopback_host(host: str) -> bool:
     if not host:
         return False
     return host.strip().lower() in _LOOPBACK_HOSTS
+
+
+_ENV_REF_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _expand_env_ref(value: Any) -> Any:
+    """Expand ``${VAR}`` references in a string against ``os.environ``.
+
+    Lets secrets in ``webhook_subscriptions.json`` be stored as a reference
+    (e.g. ``"secret": "${META_APP_SECRET}"``) so the real value lives only in
+    ``~/.hermes/.env`` and never lands in the JSON.  Unresolved references are
+    kept verbatim so the empty-secret guards still fire instead of silently
+    treating ``${VAR}`` as a literal secret.
+    """
+    if not isinstance(value, str):
+        return value
+    return _ENV_REF_RE.sub(
+        lambda m: os.environ.get(m.group(1), m.group(0)), value
+    )
 
 
 def check_webhook_requirements() -> bool:
@@ -194,6 +214,12 @@ class WebhookAdapter(BasePlatformAdapter):
         app = web.Application()
         app.router.add_get("/health", self._handle_health)
         app.router.add_post("/webhooks/{route_name}", self._handle_webhook)
+        # Meta/Facebook/Instagram webhook verification handshake.  When you
+        # save a callback URL, Meta sends a GET with hub.mode/hub.challenge/
+        # hub.verify_token and expects the challenge echoed back as plain
+        # text.  Routes that set a "verify_token" opt into this; others 404
+        # on GET as before (the POST receiver is the primary contract).
+        app.router.add_get("/webhooks/{route_name}", self._handle_webhook_verify)
         # Multi-profile multiplexing: a /p/<profile>/webhooks/<route> prefix
         # routes the inbound event to that profile. Same handler; the profile is
         # captured from the path and stamped onto the SessionSource so the agent
@@ -201,6 +227,9 @@ class WebhookAdapter(BasePlatformAdapter):
         # when gateway.multiplex_profiles is on (the handler validates).
         app.router.add_post(
             "/p/{profile}/webhooks/{route_name}", self._handle_webhook
+        )
+        app.router.add_get(
+            "/p/{profile}/webhooks/{route_name}", self._handle_webhook_verify
         )
 
         # Port conflict detection — fail fast if port is already in use
@@ -351,6 +380,68 @@ class WebhookAdapter(BasePlatformAdapter):
         """GET /health — simple health check."""
         return web.json_response({"status": "ok", "platform": "webhook"})
 
+    async def _handle_webhook_verify(
+        self, request: "web.Request"
+    ) -> "web.Response":
+        """GET /webhooks/{route_name} — Meta webhook verification handshake.
+
+        Meta (Facebook / Instagram / WhatsApp Cloud) verifies a callback URL
+        by issuing a GET with these query params:
+
+            hub.mode=subscribe
+            hub.verify_token=<token you configured in the App dashboard>
+            hub.challenge=<random string>
+
+        On a match we must echo ``hub.challenge`` back verbatim as plain text
+        with 200; otherwise return 403.  A route opts in by setting
+        ``verify_token`` in its subscription; routes without one keep the
+        previous behaviour and 404 on GET (POST is still the receiver).
+        """
+        # Hot-reload so a freshly-added verify_token is honored without a
+        # gateway restart (mirrors the POST handler).
+        self._reload_dynamic_routes()
+
+        route_name = request.match_info.get("route_name", "")
+        route_config = self._routes.get(route_name)
+
+        profile = self._resolve_request_profile(request)
+        if profile is _PROFILE_REJECTED:
+            return web.json_response(
+                {"error": "Unknown or unconfigured profile"}, status=404
+            )
+
+        if not route_config:
+            return web.json_response(
+                {"error": f"Unknown route: {route_name}"}, status=404
+            )
+
+        verify_token = route_config.get("verify_token", "")
+        if not verify_token:
+            # Route doesn't speak the Meta handshake — preserve prior semantics.
+            return web.json_response(
+                {"error": f"Route does not support GET: {route_name}"},
+                status=404,
+            )
+
+        mode = request.query.get("hub.mode", "")
+        token = request.query.get("hub.verify_token", "")
+        challenge = request.query.get("hub.challenge", "")
+
+        if mode == "subscribe" and hmac.compare_digest(token, verify_token):
+            logger.info(
+                "[webhook] Meta verification succeeded for route %s", route_name
+            )
+            return web.Response(text=challenge, content_type="text/plain")
+
+        logger.warning(
+            "[webhook] Meta verification failed for route %s (mode=%r)",
+            route_name,
+            mode,
+        )
+        return web.json_response(
+            {"error": "Verification failed"}, status=403
+        )
+
     def _reload_dynamic_routes(self) -> None:
         """Reload agent-created subscriptions from disk if the file changed."""
         from hermes_constants import get_hermes_home
@@ -377,6 +468,14 @@ class WebhookAdapter(BasePlatformAdapter):
             for k, v in data.items():
                 if k in self._static_routes:
                     continue
+                # Expand ${VAR} refs so secrets/verify tokens can live in
+                # ~/.hermes/.env instead of in plaintext in the JSON.
+                if isinstance(v, dict):
+                    v = dict(v)
+                    if "secret" in v:
+                        v["secret"] = _expand_env_ref(v["secret"])
+                    if "verify_token" in v:
+                        v["verify_token"] = _expand_env_ref(v["verify_token"])
                 effective_secret = v.get("secret", self._global_secret)
                 if not effective_secret:
                     logger.warning(

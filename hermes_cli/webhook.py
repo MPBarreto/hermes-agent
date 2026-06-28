@@ -180,6 +180,10 @@ def _cmd_subscribe(args):
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
+    verify_token = getattr(args, "verify_token", "")
+    if verify_token:
+        route["verify_token"] = verify_token
+
     if getattr(args, "deliver_only", False):
         if route["deliver"] == "log":
             print(
@@ -206,6 +210,8 @@ def _cmd_subscribe(args):
     else:
         print("  Events: (all)")
     print(f"  Deliver: {route['deliver']}")
+    if route.get("verify_token"):
+        print(f"  Verify token: {route['verify_token']}  (use this in the Meta dashboard)")
     if route.get("deliver_only"):
         print("  Mode: direct delivery (no agent, zero LLM cost)")
     if route.get("prompt"):
