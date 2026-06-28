@@ -969,6 +969,18 @@ class WebhookAdapter(BasePlatformAdapter):
             for part in key.split("."):
                 if isinstance(value, dict):
                     value = value.get(part, f"{{{key}}}")
+                elif isinstance(value, list):
+                    # Numeric path segment indexes into a list, so templates
+                    # can reach into array payloads like Instagram/Meta's
+                    # entry[].messaging[] (e.g. {entry.0.messaging.0.message.text}).
+                    if part.lstrip("-").isdigit():
+                        idx = int(part)
+                        if -len(value) <= idx < len(value):
+                            value = value[idx]
+                        else:
+                            return f"{{{key}}}"
+                    else:
+                        return f"{{{key}}}"
                 else:
                     return f"{{{key}}}"
             if isinstance(value, (dict, list)):
