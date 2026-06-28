@@ -119,6 +119,34 @@ def _expand_env_ref(value: Any) -> Any:
     )
 
 
+def _instagram_event_type(payload: Any) -> str:
+    """Classify an Instagram/Meta webhook payload into an event type.
+
+    Meta delivers every Instagram event to a single callback URL with no
+    distinguishing header. DMs carry ``entry[].messaging[]``; comments and
+    other field events carry ``entry[].changes[].field`` (e.g. ``comments``,
+    ``live_comments``). Returns the field name for change events, ``messages``
+    for DMs, or ``""`` when the payload isn't an Instagram event so the caller
+    falls through to its other detectors.
+    """
+    if not isinstance(payload, dict) or payload.get("object") != "instagram":
+        return ""
+    entries = payload.get("entry")
+    if not isinstance(entries, list) or not entries:
+        return ""
+    first = entries[0]
+    if not isinstance(first, dict):
+        return ""
+    if isinstance(first.get("messaging"), list) and first["messaging"]:
+        return "messages"
+    changes = first.get("changes")
+    if isinstance(changes, list) and changes and isinstance(changes[0], dict):
+        field = changes[0].get("field")
+        if isinstance(field, str) and field:
+            return field
+    return ""
+
+
 def check_webhook_requirements() -> bool:
     """Check if webhook adapter dependencies are available."""
     return AIOHTTP_AVAILABLE
@@ -634,6 +662,7 @@ class WebhookAdapter(BasePlatformAdapter):
             or request.headers.get("X-GitLab-Event", "")
             or payload.get("event_type", "")
             or payload.get("type", "")
+            or _instagram_event_type(payload)
             or "unknown"
         )
         allowed_events = route_config.get("events", [])
@@ -648,8 +677,18 @@ class WebhookAdapter(BasePlatformAdapter):
                 {"status": "ignored", "event": event_type}
             )
 
-        # Format prompt from template
-        prompt_template = route_config.get("prompt", "")
+        # Format prompt from template. ``prompt_by_event`` lets one route
+        # render different templates per event type (e.g. Instagram delivers
+        # DMs and comments to the same URL): pick the event-specific template,
+        # fall back to a "default" key, then to the plain ``prompt``.
+        prompt_by_event = route_config.get("prompt_by_event")
+        if isinstance(prompt_by_event, dict):
+            prompt_template = prompt_by_event.get(
+                event_type,
+                prompt_by_event.get("default", route_config.get("prompt", "")),
+            )
+        else:
+            prompt_template = route_config.get("prompt", "")
         prompt = self._render_prompt(
             prompt_template, payload, event_type, route_name
         )
