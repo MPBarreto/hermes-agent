@@ -74,6 +74,77 @@ GITHUB_PR_PAYLOAD = {
 
 
 # ===================================================================
+# Test 0: Meta (Instagram/Facebook/WhatsApp) verification handshake
+# ===================================================================
+
+class TestMetaVerification:
+
+    def _app(self, adapter: WebhookAdapter) -> web.Application:
+        app = web.Application()
+        app.router.add_get(
+            "/webhooks/{route_name}", adapter._handle_webhook_verify
+        )
+        return app
+
+    @pytest.mark.asyncio
+    async def test_verify_echoes_challenge_on_match(self):
+        routes = {
+            "instagram-message": {
+                "secret": "hmac-secret",
+                "verify_token": "my-verify-token",
+                "deliver": "slack",
+            }
+        }
+        adapter = _make_adapter(routes)
+        async with TestClient(TestServer(self._app(adapter))) as cli:
+            resp = await cli.get(
+                "/webhooks/instagram-message",
+                params={
+                    "hub.mode": "subscribe",
+                    "hub.verify_token": "my-verify-token",
+                    "hub.challenge": "1158201444",
+                },
+            )
+            assert resp.status == 200
+            assert (await resp.text()) == "1158201444"
+
+    @pytest.mark.asyncio
+    async def test_verify_rejects_wrong_token(self):
+        routes = {
+            "instagram-message": {
+                "secret": "hmac-secret",
+                "verify_token": "my-verify-token",
+                "deliver": "slack",
+            }
+        }
+        adapter = _make_adapter(routes)
+        async with TestClient(TestServer(self._app(adapter))) as cli:
+            resp = await cli.get(
+                "/webhooks/instagram-message",
+                params={
+                    "hub.mode": "subscribe",
+                    "hub.verify_token": "WRONG",
+                    "hub.challenge": "1158201444",
+                },
+            )
+            assert resp.status == 403
+
+    @pytest.mark.asyncio
+    async def test_get_without_verify_token_is_404(self):
+        """A route that didn't opt into the handshake 404s on GET."""
+        routes = {
+            "github-pr": {"secret": "hmac-secret", "deliver": "log"}
+        }
+        adapter = _make_adapter(routes)
+        async with TestClient(TestServer(self._app(adapter))) as cli:
+            resp = await cli.get(
+                "/webhooks/github-pr",
+                params={"hub.mode": "subscribe"},
+            )
+            assert resp.status == 404
+
+
+# ===================================================================
 # Test 1: GitHub PR webhook triggers agent
 # ===================================================================
 

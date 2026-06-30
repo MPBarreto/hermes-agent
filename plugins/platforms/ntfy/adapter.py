@@ -495,6 +495,8 @@ async def _standalone_send(
     thread_id: Optional[str] = None,
     media_files: Optional[List[str]] = None,
     force_document: bool = False,
+    subject=None,
+    **_ignored,
 ) -> Dict[str, Any]:
     """Out-of-process publish for cron / send_message_tool fallbacks.
 

@@ -1,0 +1,33 @@
+name: instagram-platform
+label: Instagram (Direct Messages)
+kind: platform
+version: 1.0.0
+description: >
+  Instagram Direct Message adapter for Hermes Agent via the Instagram Graph
+  API (Instagram Login product, host graph.instagram.com). Sends/replies to
+  DMs so the agent can answer Instagram messages. Inbound events arrive via
+  the generic webhook platform. Subject to Instagram's 24h messaging window.
+author: Afiro
+requires_env:
+  - name: IG_ACCESS_TOKEN
+    description: "Long-lived Instagram user access token (~60 days)"
+    prompt: "Instagram access token"
+    url: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login"
+    password: true
+optional_env:
+  - name: IG_USER_ID
+    description: "Instagram account Graph id (the 'id' from /me)"
+    prompt: "Instagram user id"
+    password: false
+  - name: IG_API_VERSION
+    description: "Graph API version (default v23.0)"
+    prompt: "Graph API version"
+    password: false
+  - name: IG_ALLOWED_USERS
+    description: "Comma-separated IGSIDs allowed to talk to the bot"
+    prompt: "Allowed users (comma-separated)"
+    password: false
+  - name: IG_HOME_CHANNEL
+    description: "Default IGSID for cron / notification delivery"
+    prompt: "Home IGSID"
+    password: false

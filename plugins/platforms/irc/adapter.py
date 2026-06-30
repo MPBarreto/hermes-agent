@@ -724,6 +724,8 @@ async def _standalone_send(
     thread_id: Optional[str] = None,
     media_files: Optional[List[str]] = None,
     force_document: bool = False,
+    subject=None,
+    **_ignored,
 ) -> Dict[str, Any]:
     """Open an ephemeral IRC connection, send a PRIVMSG, and quit.
 

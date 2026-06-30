@@ -333,6 +333,54 @@ class TestRenderPrompt:
         )
         assert result == "PR #42: Fix bug"
 
+    def test_render_prompt_array_index(self):
+        """Numeric path segments index into list payloads (Instagram/Meta shape)."""
+        adapter = _make_adapter()
+        payload = {
+            "entry": [
+                {"messaging": [{"sender": {"id": "123"}, "message": {"text": "oi"}}]}
+            ]
+        }
+        result = adapter._render_prompt(
+            "De {entry.0.messaging.0.sender.id}: {entry.0.messaging.0.message.text}",
+            payload,
+            "messages",
+            "instagram-message",
+        )
+        assert result == "De 123: oi"
+
+    def test_render_prompt_array_index_out_of_range_preserved(self):
+        """Out-of-range / non-numeric index leaves the token literal."""
+        adapter = _make_adapter()
+        payload = {"entry": [{"id": "0"}]}
+        assert "{entry.5.id}" in adapter._render_prompt(
+            "{entry.5.id}", payload, "", ""
+        )
+        assert "{entry.x.id}" in adapter._render_prompt(
+            "{entry.x.id}", payload, "", ""
+        )
+
+    def test_instagram_event_type_detection(self):
+        """Instagram payloads classify into messages / comments / live_comments."""
+        from gateway.platforms.webhook import _instagram_event_type
+
+        dm = {"object": "instagram", "entry": [{"messaging": [{"x": 1}]}]}
+        comment = {
+            "object": "instagram",
+            "entry": [{"changes": [{"field": "comments", "value": {}}]}],
+        }
+        live = {
+            "object": "instagram",
+            "entry": [{"changes": [{"field": "live_comments", "value": {}}]}],
+        }
+        assert _instagram_event_type(dm) == "messages"
+        assert _instagram_event_type(comment) == "comments"
+        assert _instagram_event_type(live) == "live_comments"
+        # Non-Instagram / malformed payloads return "" so other detectors run.
+        assert _instagram_event_type({"object": "page"}) == ""
+        assert _instagram_event_type({"event_type": "push"}) == ""
+        assert _instagram_event_type([]) == ""
+
     def test_render_prompt_missing_key_preserved(self):
         """{nonexistent} is left as-is when key doesn't exist in payload."""
         adapter = _make_adapter()
