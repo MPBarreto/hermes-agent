@@ -951,6 +951,8 @@ async def _standalone_send(
     thread_id=None,
     media_files=None,
     force_document=False,
+    subject=None,
+    **_ignored,
 ):
     """Out-of-process Email delivery via SMTP (one-shot). Implements the
     standalone_sender_fn contract; replaces the legacy _send_email helper."""
@@ -977,7 +979,9 @@ async def _standalone_send(
         msg = MIMEText(message, "plain", "utf-8")
         msg["From"] = from_header
         msg["To"] = chat_id
-        msg["Subject"] = "Afiro Agent"
+        # Use the real subject when provided; fall back to a neutral default only
+        # when the caller gave none (e.g. ad-hoc alert sends).
+        msg["Subject"] = (subject or "").strip() or "Afiro Agent"
         msg["Date"] = formatdate(localtime=True)
 
         server = smtplib.SMTP(smtp_host, smtp_port)

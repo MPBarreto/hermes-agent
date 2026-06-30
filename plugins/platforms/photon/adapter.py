@@ -1566,6 +1566,8 @@ async def _standalone_send(
     thread_id: Optional[str] = None,  # noqa: ARG001 — Spectrum has no threads yet
     media_files: Optional[list] = None,
     force_document: bool = False,  # noqa: ARG001 — iMessage auto-detects file kind
+    subject=None,
+    **_ignored,
 ) -> Dict[str, Any]:
     if not HTTPX_AVAILABLE:
         return {"error": "httpx not installed"}

@@ -4021,6 +4021,8 @@ async def _standalone_send(
     thread_id=None,
     media_files=None,
     force_document=False,
+    subject=None,
+    **_ignored,
 ):
     """Out-of-process Slack delivery via the Web API ``chat.postMessage``.
 

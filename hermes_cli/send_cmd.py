@@ -335,11 +335,12 @@ def cmd_send(args: argparse.Namespace) -> None:
         )
         sys.exit(_USAGE_EXIT)
 
-    # Optional: prepend a subject line. Useful for alerting scripts that
-    # want a consistent header without inlining it into every call.
+    # Optional subject. Passed through as a first-class field so platforms with
+    # a native subject (email → Subject: header) use it correctly. Platforms
+    # without a subject concept (Slack/Telegram/etc.) prepend it to the body —
+    # that branching lives in send_message_tool, NOT here, so email never gets
+    # the subject inlined into its body.
     subject = getattr(args, "subject", None)
-    if subject:
-        message = f"{subject}\n\n{message.lstrip()}"
 
     # Import lazily so `hermes send --help` stays fast and does not pull in
     # the full tool registry / gateway config stack.
@@ -355,6 +356,8 @@ def cmd_send(args: argparse.Namespace) -> None:
         "target": target,
         "message": message,
     }
+    if subject:
+        tool_args["subject"] = subject
 
     result = send_message_tool(tool_args)
     exit_code = _emit_result(

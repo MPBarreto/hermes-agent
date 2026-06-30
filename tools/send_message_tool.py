@@ -381,6 +381,20 @@ def _handle_send(args):
 
     media_files, cleaned_message = BasePlatformAdapter.extract_media(message)
     media_files = BasePlatformAdapter.filter_media_delivery_paths(media_files)
+
+    # Subject handling, branched per platform. Email has a native Subject header,
+    # so the subject is passed through as a field and MUST NOT be inlined into the
+    # body (that bug made cadence emails show the subject as the first body line
+    # and "Afiro Agent" as the header). Platforms without a subject concept
+    # (Slack/Telegram/etc.) keep the legacy behaviour: prepend it to the body.
+    subject = (args.get("subject") or "").strip() or None
+    email_subject = None
+    if subject:
+        if platform_name == "email":
+            email_subject = subject
+        else:
+            cleaned_message = f"{subject}\n\n{cleaned_message.lstrip()}"
+
     mirror_text = cleaned_message.strip() or _describe_media_for_mirror(media_files)
 
     used_home_channel = False
@@ -441,6 +455,7 @@ def _handle_send(args):
                 thread_id=thread_id,
                 media_files=media_files,
                 force_document=force_document_attachments,
+                subject=email_subject,
             )
         )
         if used_home_channel and isinstance(result, dict) and result.get("success"):
@@ -713,7 +728,7 @@ async def _send_via_adapter(
     }
 
 
-async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None, media_files=None, force_document=False):
+async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None, media_files=None, force_document=False, subject=None):
     """Route a message to the appropriate platform sender.
 
     Long messages are automatically chunked to fit within platform limits
@@ -930,7 +945,7 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
         elif platform == Platform.SIGNAL:
             result = await _send_signal(pconfig.extra, chat_id, chunk)
         elif platform == Platform.EMAIL:
-            result = await _registry_standalone_send("email", pconfig, chat_id, chunk, thread_id)
+            result = await _registry_standalone_send("email", pconfig, chat_id, chunk, thread_id, subject=subject)
         elif platform == Platform.SMS:
             result = await _registry_standalone_send("sms", pconfig, chat_id, chunk, thread_id)
         elif platform == Platform.MATRIX:
@@ -1208,12 +1223,16 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
 # (plugins/platforms/slack/adapter.py), wired via standalone_sender_fn. #41112.
 
 
-async def _registry_standalone_send(platform_name, pconfig, chat_id, message, thread_id=None):
+async def _registry_standalone_send(platform_name, pconfig, chat_id, message, thread_id=None, subject=None):
     """Dispatch a one-shot send through a migrated platform plugin's
     standalone_sender_fn (registry hook).  Used for platforms whose adapter
     moved out of gateway/platforms/ into plugins/platforms/<name>/ (#41112):
     the legacy inline ``_send_<platform>`` helper now lives in the plugin as
     ``_standalone_send`` and is reached via the platform registry.
+
+    ``subject`` is forwarded for platforms with a native subject (email). All
+    ``_standalone_send`` implementations accept ``subject=None`` and ignore it
+    when not applicable, so this is safe across every platform.
     """
     from gateway.platform_registry import platform_registry
     from hermes_cli.plugins import discover_plugins
@@ -1221,7 +1240,7 @@ async def _registry_standalone_send(platform_name, pconfig, chat_id, message, th
     entry = platform_registry.get(platform_name)
     if entry is None or entry.standalone_sender_fn is None:
         return {"error": f"{platform_name} plugin not registered or missing standalone_sender_fn"}
-    return await entry.standalone_sender_fn(pconfig, chat_id, message, thread_id=thread_id)
+    return await entry.standalone_sender_fn(pconfig, chat_id, message, thread_id=thread_id, subject=subject)
 
 
 # _send_whatsapp moved to plugins/platforms/whatsapp/adapter.py::_standalone_send,

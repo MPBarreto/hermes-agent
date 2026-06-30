@@ -964,6 +964,8 @@ async def _standalone_send(
     thread_id: Optional[str] = None,
     media_files: Optional[list] = None,
     force_document: bool = False,
+    subject=None,
+    **_ignored,
 ) -> Dict[str, Any]:
     """Send via the Mattermost v4 REST API without a live gateway adapter.
 

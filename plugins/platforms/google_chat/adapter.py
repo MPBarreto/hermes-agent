@@ -3135,6 +3135,8 @@ async def _standalone_send(
     thread_id: Optional[str] = None,
     media_files: Optional[List[str]] = None,
     force_document: bool = False,
+    subject=None,
+    **_ignored,
 ) -> Dict[str, Any]:
     """POST a single Google Chat message via the REST API without the SDK.
 
