@@ -29,7 +29,7 @@ from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
-from email.utils import formatdate
+from email.utils import formatdate, formataddr
 from email import encoders
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -319,6 +319,13 @@ class EmailAdapter(BasePlatformAdapter):
         # instead of an obvious "host not set" error.
         extra = config.extra or {}
         self._address = (os.getenv("EMAIL_ADDRESS", "") or extra.get("address", "")).strip()
+        # Display name shown to recipients in the From header. Without it, the
+        # recipient sees only the bare address. EMAIL_FROM_NAME wins; falls back
+        # to config extra, then to the bare address (no display name).
+        self._from_name = (os.getenv("EMAIL_FROM_NAME", "") or extra.get("from_name", "")).strip()
+        self._from_header = (
+            formataddr((self._from_name, self._address)) if self._from_name else self._address
+        )
         self._password = os.getenv("EMAIL_PASSWORD", "")
         self._imap_host = (os.getenv("EMAIL_IMAP_HOST", "") or extra.get("imap_host", "")).strip()
         self._imap_port = env_int("EMAIL_IMAP_PORT", 993)
@@ -675,12 +682,12 @@ class EmailAdapter(BasePlatformAdapter):
     ) -> str:
         """Send an email via SMTP. Runs in executor thread."""
         msg = MIMEMultipart()
-        msg["From"] = self._address
+        msg["From"] = self._from_header
         msg["To"] = to_addr
 
         # Thread context for reply
         ctx = self._thread_context.get(to_addr, {})
-        subject = ctx.get("subject", "Hermes Agent")
+        subject = ctx.get("subject", "Afiro Agent")
         if not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
@@ -790,11 +797,11 @@ class EmailAdapter(BasePlatformAdapter):
     ) -> str:
         """Send an email with multiple file attachments via SMTP."""
         msg = MIMEMultipart()
-        msg["From"] = self._address
+        msg["From"] = self._from_header
         msg["To"] = to_addr
 
         ctx = self._thread_context.get(to_addr, {})
-        subject = ctx.get("subject", "Hermes Agent")
+        subject = ctx.get("subject", "Afiro Agent")
         if not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
@@ -870,11 +877,11 @@ class EmailAdapter(BasePlatformAdapter):
     ) -> str:
         """Send an email with a file attachment via SMTP."""
         msg = MIMEMultipart()
-        msg["From"] = self._address
+        msg["From"] = self._from_header
         msg["To"] = to_addr
 
         ctx = self._thread_context.get(to_addr, {})
-        subject = ctx.get("subject", "Hermes Agent")
+        subject = ctx.get("subject", "Afiro Agent")
         if not subject.startswith("Re:"):
             subject = f"Re: {subject}"
         msg["Subject"] = subject
@@ -950,10 +957,12 @@ async def _standalone_send(
     import smtplib
     import ssl as _ssl
     from email.mime.text import MIMEText
-    from email.utils import formatdate
+    from email.utils import formatdate, formataddr
 
     extra = getattr(pconfig, "extra", {}) or {}
     address = extra.get("address") or os.getenv("EMAIL_ADDRESS", "")
+    from_name = (os.getenv("EMAIL_FROM_NAME", "") or extra.get("from_name", "")).strip()
+    from_header = formataddr((from_name, address)) if from_name else address
     password = os.getenv("EMAIL_PASSWORD", "")
     smtp_host = extra.get("smtp_host") or os.getenv("EMAIL_SMTP_HOST", "")
     try:
@@ -966,9 +975,9 @@ async def _standalone_send(
 
     try:
         msg = MIMEText(message, "plain", "utf-8")
-        msg["From"] = address
+        msg["From"] = from_header
         msg["To"] = chat_id
-        msg["Subject"] = "Hermes Agent"
+        msg["Subject"] = "Afiro Agent"
         msg["Date"] = formatdate(localtime=True)
 
         server = smtplib.SMTP(smtp_host, smtp_port)
