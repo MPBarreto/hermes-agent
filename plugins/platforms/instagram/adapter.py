@@ -86,7 +86,12 @@ class InstagramAdapter(BasePlatformAdapter):
         return f"{GRAPH_API_BASE}/{self._api_version}/me/{path}"
 
     # ------------------------------------------------------------------ lifecycle
-    async def connect(self) -> bool:
+    async def connect(self, *, is_reconnect: bool = False) -> bool:
+        # ``is_reconnect`` is part of the BasePlatformAdapter.connect contract
+        # (the gateway always forwards it). This adapter is stateless/outbound
+        # — no server-side queue to preserve — so cold boot and reconnect are
+        # handled identically; the parameter is accepted to satisfy the
+        # contract and avoid a TypeError on the reconnect path.
         import aiohttp
 
         if not self._access_token:
