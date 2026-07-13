@@ -3235,6 +3235,25 @@ class TestMessageSplitting:
         assert adapter._app.client.chat_postMessage.call_count >= 2
 
     @pytest.mark.asyncio
+    async def test_long_message_chunks_thread_under_first(self, adapter):
+        """Continuation chunks must reply in the first chunk's thread, not
+        land as separate top-level messages."""
+        long_text = "x" * 45000
+        adapter._app.client.chat_postMessage = AsyncMock(
+            side_effect=[{"ts": "root_ts"}, {"ts": "ts2"}, {"ts": "ts3"}]
+        )
+        result = await adapter.send("C123", long_text)
+        calls = adapter._app.client.chat_postMessage.call_args_list
+        assert len(calls) >= 2
+        # First chunk is top-level (no thread_ts)
+        assert "thread_ts" not in calls[0].kwargs
+        # Every continuation chunk threads under the first chunk
+        for call in calls[1:]:
+            assert call.kwargs.get("thread_ts") == "root_ts"
+        # The reported message_id is the thread root
+        assert result.message_id == "root_ts"
+
+    @pytest.mark.asyncio
     async def test_short_message_single_send(self, adapter):
         """Short messages should be sent in one call."""
         adapter._app.client.chat_postMessage = AsyncMock(return_value={"ts": "ts1"})

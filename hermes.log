@@ -1,0 +1,119 @@
+Using CPython 3.12.11
+Creating virtual environment at: .venv
+   Building hermes-agent @ file:///Users/mb/Documents/hermes-agent
+Downloading uvloop (1.3MiB)
+Downloading pillow (4.5MiB)
+Downloading pydantic-core (1.9MiB)
+ Downloaded uvloop
+ Downloaded pydantic-core
+ Downloaded pillow
+      Built hermes-agent @ file:///Users/mb/Documents/hermes-agent
+Installed 60 packages in 203ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+╭─ Hermes Agent v0.17.0 (2026.6.19) · upstream f3d2dfbe · local e943289a (+197 carried commits─╮
+│                                    Available Tools                                           │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⣀⣀⠀⢀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   browser: browser_back, browser_click, ...                 │
+│   ⠀⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣇⠸⣿⣿⠇⣸⣿⣿⣷⣦⣄⡀⠀⠀⠀⠀⠀⠀   clarify: clarify                                          │
+│   ⠀⢀⣠⣴⣶⠿⠋⣩⡿⣿⡿⠻⣿⡇⢠⡄⢸⣿⠟⢿⣿⢿⣍⠙⠿⣶⣦⣄⡀⠀   code_execution: execute_code                              │
+│   ⠀⠀⠉⠉⠁⠶⠟⠋⠀⠉⠀⢀⣈⣁⡈⢁⣈⣁⡀⠀⠉⠀⠙⠻⠶⠈⠉⠉⠀⠀   computer_use: computer_use                                │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⡿⠛⢁⡈⠛⢿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   cronjob: cronjob                                          │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣦⣤⣈⠁⢠⣴⣿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   delegation: delegate_task                                 │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠻⢿⣿⣦⡉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   file: patch, read_file, search_files, write_file          │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢷⣦⣈⠛⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   image_gen: image_generate                                 │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣴⠦⠈⠙⠿⣦⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   (and 9 more toolsets...)                                  │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⣤⡈⠁⢤⣿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                             │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠷⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   MCP Servers                                               │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠑⢶⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   apollo (http) — configured                                │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠁⢰⡆⠈⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   apify (http) — configured                                 │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠳⠈⣡⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀   hubspot (http) — configured                               │
+│   ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀                                                             │
+│                                    Available Skills                                          │
+│    gpt-5.4-mini · Nous Research    apple: apple-notes, apple-reminders, findmy, imessage     │
+│  /Users/mb/Documents/hermes-agent  autonomous-ai-agents: claude-code, codex, hermes-agent,   │
+│  Session: 20260706_080542_f93ad6   opencode                                                  │
+│                                    creative: architecture-diagram, ascii-art, ascii-video,   │
+│                                    b...                                                      │
+│                                    data-science: jupyter-live-kernel                         │
+│                                    email: himalaya                                           │
+│                                    general: computer-use, dogfood, sdr-email-cadence,        │
+│                                    sdr-h...                                                  │
+│                                    github: codebase-inspection, github-auth,                 │
+│                                    github-code-r...                                          │
+│                                    media: gif-search, heartmula, songsee, youtube-content    │
+│                                    mlops: audiocraft-audio-generation,                       │
+│                                    evaluating-llms-ha...                                     │
+│                                    note-taking: obsidian                                     │
+│                                    productivity: airtable, google-workspace, maps,           │
+│                                    nano-pdf, not...                                          │
+│                                    research: arxiv, blogwatcher, ecommerce-cms-detector,     │
+│                                    ins...                                                    │
+│                                    sdr: skill-sdr                                            │
+│                                    smart-home: openhue                                       │
+│                                    social-media: xurl                                        │
+│                                    software-development: hermes-agent-skill-authoring,       │
+│                                    node-inspect-debu...                                      │
+│                                                                                              │
+│                                    21 tools · 82 skills · /help for commands                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Welcome to Hermes Agent! Type your message or /help for commands.
+✦ Tip: /platforms shows gateway and messaging-platform connection status right from inside chat.
+
+
+Goodbye! ⚕
+Traceback (most recent call last):
+  File "/Users/mb/Documents/hermes-agent/.venv/bin/hermes", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/mb/Documents/hermes-agent/hermes_cli/main.py", line 13621, in main
+    cmd_chat(args)
+  File "/Users/mb/Documents/hermes-agent/hermes_cli/main.py", line 2404, in cmd_chat
+    cli_main(**kwargs)
+  File "/Users/mb/Documents/hermes-agent/cli.py", line 15731, in main
+    cli.run()
+  File "/Users/mb/Documents/hermes-agent/cli.py", line 15009, in run
+    app.run()
+  File "/Users/mb/Documents/hermes-agent/.venv/lib/python3.12/site-packages/prompt_toolkit/application/application.py", line 1002, in run
+    return asyncio.run(coro)
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/mb/.local/share/uv/python/cpython-3.12-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/mb/.local/share/uv/python/cpython-3.12-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mb/.local/share/uv/python/cpython-3.12-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/mb/Documents/hermes-agent/.venv/lib/python3.12/site-packages/prompt_toolkit/application/application.py", line 886, in run_async
+    return await _run_async(f)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mb/Documents/hermes-agent/.venv/lib/python3.12/site-packages/prompt_toolkit/application/application.py", line 734, in _run_async
+    with self.input.raw_mode(), self.input.attach(
+         ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mb/Documents/hermes-agent/.venv/lib/python3.12/site-packages/prompt_toolkit/input/vt100.py", line 258, in __enter__
+    termios.tcsetattr(self.fileno, termios.TCSANOW, newattr)
+termios.error: (4, 'Interrupted system call')

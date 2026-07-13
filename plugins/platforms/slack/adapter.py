@@ -1372,29 +1372,40 @@ class SlackAdapter(BasePlatformAdapter):
             # Controlled via platform config: gateway.slack.reply_broadcast
             broadcast = self.config.extra.get("reply_broadcast", False)
 
+            first_ts = None
             for i, chunk in enumerate(chunks):
                 kwargs = {
                     "channel": chat_id,
                     "text": chunk,
                     "mrkdwn": True,
                 }
-                if thread_ts:
-                    kwargs["thread_ts"] = thread_ts
+                # Continuation chunks must never land as separate top-level
+                # messages: replies to one block would open a thread missing
+                # the rest of the content. Thread them under the first chunk.
+                effective_thread_ts = thread_ts or first_ts
+                if effective_thread_ts:
+                    kwargs["thread_ts"] = effective_thread_ts
                     # Only broadcast the first chunk of the first reply
-                    if broadcast and i == 0:
+                    if broadcast and thread_ts and i == 0:
                         kwargs["reply_broadcast"] = True
 
                 last_result = await self._get_client(chat_id).chat_postMessage(**kwargs)
+                if i == 0 and last_result:
+                    first_ts = last_result.get("ts")
 
             # Clear Slack Assistant status as soon as the final message is posted.
             if thread_ts:
                 await self.stop_typing(chat_id)
 
             # Track the sent message ts so we can auto-respond to thread
-            # replies without requiring @mention.
-            sent_ts = last_result.get("ts") if last_result else None
+            # replies without requiring @mention. For multi-chunk sends the
+            # first chunk is the thread root, so report that as message_id.
+            sent_ts = first_ts or (last_result.get("ts") if last_result else None)
             if sent_ts:
                 self._bot_message_ts.add(sent_ts)
+                last_ts = last_result.get("ts") if last_result else None
+                if last_ts:
+                    self._bot_message_ts.add(last_ts)
                 # Also register the thread root so replies-to-my-replies work
                 if thread_ts:
                     self._bot_message_ts.add(thread_ts)
