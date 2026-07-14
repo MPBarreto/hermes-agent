@@ -102,11 +102,15 @@ Se Apollo/HubSpot/Apify retornar `not connected` ou `unreachable`: aguardar ~60s
 ## 8. Enriquecimento (cascata custo-otimizada)
 
 Domínio → decisor (Apollo primeiro; senão Apify actor BARATO) → contato (email/telefone).
-**Actors Apify aprovados** (baixo custo): `apt_marble/linkedin-decision-makers-scraper`
-($0.0015), `novashieldai/b2b-lead-enrichment` (grátis), `snipercoder/bulk-linkedin-email-finder`
-($0.001), `apimaestro/linkedin-profile-detail` ($0.005).
-**PROIBIDOS** (caros): `snipercoder/decision-maker-email-finder` ($25),
-`snipercoder/bulk-decision-makers-email-finder` ($20), `caprolok/website-email-phone-finder`.
+**Actors Apify aprovados** (baixo custo, preços verificados em 2026-07-13):
+`apt_marble/linkedin-decision-makers-scraper-ceos-founders-executives`
+($0.0015/result), `snipercoder/bulk-linkedin-email-finder`
+(a partir de $0.0006/email) e `snipercoder/decision-maker-email-finder`
+(a partir de $0.0006/result).
+
+O Hermes expõe esses actors pelo MCP restrito `apify_sdr`; não usar as ferramentas
+dinâmicas `actors`, `search-actors`, `add-actor` ou `call-actor`. Antes de executar,
+confirmar o preço atual na Apify e limitar explicitamente o número de resultados.
 Nada acima de **$0.05/result** sem aprovação. Apify só grava decisor se a empresa dele bater
 com o domínio-alvo (evitar falso positivo).
 
