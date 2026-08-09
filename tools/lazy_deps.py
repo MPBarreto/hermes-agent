@@ -134,6 +134,13 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # ─── Image generation backends ─────────────────────────────────────────
     "image.fal": ("fal-client==0.13.1",),
 
+    # ─── Browser automation (LinkedIn outbound) ────────────────────────────
+    # Pin tracks the `linkedin` extra in pyproject.toml — bump both together.
+    # The wheel alone isn't enough to run: Chromium comes from a separate
+    # `playwright install chromium`, which the linkedin tool checks for and
+    # reports as an actionable instruction rather than a stack trace.
+    "browser.linkedin": ("playwright>=1.59.0",),
+
     # ─── Memory providers ──────────────────────────────────────────────────
     "memory.honcho": ("honcho-ai==2.0.1",),
     "memory.hindsight": ("hindsight-client==0.6.1",),

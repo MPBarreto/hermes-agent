@@ -288,6 +288,12 @@ TOOLSETS = {
         "includes": [],
     },
 
+    "linkedin": {
+        "description": "LinkedIn outbound: manual login, connection requests, acceptance checks, DMs",
+        "tools": ["linkedin"],
+        "includes": [],
+    },
+
     "yuanbao": {
         "description": "Yuanbao platform tools - group info, member queries, DM, stickers",
         "tools": [
