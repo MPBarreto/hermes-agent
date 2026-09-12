@@ -12,8 +12,10 @@ tool testable without a network and usable when the HubSpot MCP is down.
 
 Operational notes worth knowing before calling it:
 
-* The daily caps (5 invitations, 5 messages) are enforced here, in the
-  ledger — not left to the model to count.
+* The daily caps (10 invitations, 5 messages) and the two independent
+  connection windows (5 in the morning, 5 from 19:00 to 20:00 in
+  America/Sao_Paulo) are enforced here, in the ledger — not left to the model
+  to count.
 * Every action opens a **visible** Chromium window on the host machine.
   Headless changes the browser fingerprint and is what trips LinkedIn's
   checkpoint, so it exists only for tests.
@@ -68,8 +70,10 @@ _SCHEMA = {
         "saved session is still valid; 'connect' sends connection invitations "
         "(always without a note); 'check_accepted' reports which pending "
         "invitations have been accepted; 'message' sends a DM to existing "
-        "1st-degree connections. Daily caps (5 invitations, 5 messages) and "
-        "same-day deduplication are enforced automatically. Opens a visible "
+        "1st-degree connections. Daily caps (10 invitations, 5 messages), "
+        "same-day deduplication, and the two independent connection windows "
+        "(5 in the morning and 5 between 19:00 and 20:00 BRT) are enforced "
+        "automatically. Opens a visible "
         "browser window on the host machine."
     ),
     "parameters": {
@@ -194,6 +198,8 @@ async def _handle(args: dict, **_kwargs) -> str:
                 "remaining_today": {
                     name: ledger.remaining_today(name) for name in ledger.QUOTA_ACTIONS
                 },
+                "remaining_connect_windows": ledger.remaining_connect_windows_today(),
+                "current_connect_window": ledger.current_connect_window(),
                 "pending_hubspot_sync": ledger.pending_sync(),
             },
             ensure_ascii=False,

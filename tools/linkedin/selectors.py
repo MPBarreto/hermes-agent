@@ -147,18 +147,27 @@ MESSAGE_BOX_SELECTORS = [
 ]
 
 SEND_BUTTON_SELECTORS = [
-    "button:has-text('Enviar')",
-    "button:has-text('Send')",
-    "button[aria-label*='Enviar']",
-    "button[aria-label*='Send']",
+    # LinkedIn alternates between a real disabled attribute and aria-disabled.
+    # Keep both out of the candidate set: clicking either one can look like a
+    # successful DOM click while no message leaves the composer.
+    "button.msg-form__send-button:not([disabled]):not([aria-disabled='true'])",
+    "button:has-text('Enviar'):not([disabled]):not([aria-disabled='true'])",
+    "button:has-text('Send'):not([disabled]):not([aria-disabled='true'])",
+    "button[aria-label*='Enviar']:not([disabled]):not([aria-disabled='true'])",
+    "button[aria-label*='Send']:not([disabled]):not([aria-disabled='true'])",
+    "[role='button']:has-text('Enviar'):not([aria-disabled='true'])",
+    "[role='button']:has-text('Send'):not([aria-disabled='true'])",
 ]
 
 CONNECTIONS_SEARCH_SELECTORS = [
-    "input[placeholder*='Pesquisar']",
-    "input[placeholder*='Search']",
-    "input[aria-label*='Pesquisar']",
-    "input[aria-label*='Search']",
-    "input[role='combobox']",
+    # The global navigation input is also labelled "Pesquisar". Selecting
+    # it leaves a search-results popover over the connection cards and the
+    # following DOM click no longer opens the intended conversation. The
+    # connections view uses the more specific "Pesquisar nome" field.
+    "input[placeholder*='Pesquisar nome']",
+    "input[placeholder*='Search name']",
+    "input[aria-label*='Pesquisar nome']",
+    "input[aria-label*='Search name']",
 ]
 
 # ---------------------------------------------------------------------------

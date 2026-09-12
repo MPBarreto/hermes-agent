@@ -150,7 +150,7 @@ def test_ledger_counts_only_successful_actions(linkedin_home):
     ledger.append("connect", "https://www.linkedin.com/in/pX", "failed:no_button")
 
     assert ledger.count_today("connect") == 3
-    assert ledger.remaining_today("connect") == 2
+    assert ledger.remaining_today("connect") == 7
 
 
 def test_ledger_enforces_daily_limit(linkedin_home):
@@ -159,6 +159,144 @@ def test_ledger_enforces_daily_limit(linkedin_home):
     for i in range(ledger.DAILY_LIMITS["connect"]):
         ledger.append("connect", f"https://www.linkedin.com/in/p{i}", "ok")
     assert ledger.remaining_today("connect") == 0
+
+
+def test_connect_daily_limit_is_ten_and_messages_remain_five(linkedin_home):
+    from tools.linkedin import ledger
+
+    assert ledger.DAILY_LIMITS["connect"] == 10
+    assert ledger.DAILY_LIMITS["message"] == 5
+
+
+def test_connect_window_boundaries_are_local_time(linkedin_home):
+    from datetime import datetime
+
+    from tools.linkedin import ledger
+
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 6, 59)) is None
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 7, 0)) == "morning"
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 9, 59)) == "morning"
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 10, 0)) is None
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 18, 59)) is None
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 19, 0)) == "evening"
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 19, 59)) == "evening"
+    assert ledger.connect_window_for_local(datetime(2026, 8, 24, 20, 0)) is None
+
+
+def test_connect_window_quotas_are_independent_and_total_ten(linkedin_home):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from tools.linkedin import ledger
+    from tools.linkedin.paths import ensure_dirs, ledger_path
+
+    ensure_dirs()
+    today = ledger.local_today()
+    local_morning = datetime.fromisoformat(f"{today}T08:00:00").replace(
+        tzinfo=ZoneInfo("America/Sao_Paulo")
+    )
+    local_evening = datetime.fromisoformat(f"{today}T19:00:00").replace(
+        tzinfo=ZoneInfo("America/Sao_Paulo")
+    )
+    morning_stamp = local_morning.astimezone(ZoneInfo("UTC")).isoformat()
+    evening_stamp = local_evening.astimezone(ZoneInfo("UTC")).isoformat()
+    path = ledger_path(today[:7])
+    path.write_text(ledger._HEADER, encoding="utf-8")
+    with path.open("a", encoding="utf-8") as handle:
+        for i in range(5):
+            handle.write(
+                f"| {morning_stamp} | connect | https://www.linkedin.com/in/m{i} | ok | hubspot:synced |\n"
+            )
+
+    assert ledger.count_today("connect") == 5
+    assert ledger.remaining_today("connect") == 5
+    assert ledger.remaining_connect_window("morning") == 0
+    assert ledger.remaining_connect_window("evening") == 5
+
+    with path.open("a", encoding="utf-8") as handle:
+        for i in range(5):
+            handle.write(
+                f"| {evening_stamp} | connect | https://www.linkedin.com/in/e{i} | ok | hubspot:synced |\n"
+            )
+
+    assert ledger.count_today("connect") == 10
+    assert ledger.remaining_today("connect") == 0
+    assert ledger.remaining_connect_window("morning") == 0
+    assert ledger.remaining_connect_window("evening") == 0
+
+
+def test_connect_window_is_derived_from_utc_ledger_timestamp(linkedin_home):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from tools.linkedin import ledger
+
+    local = datetime(2026, 8, 24, 19, 30, tzinfo=ZoneInfo("America/Sao_Paulo"))
+    stamp = local.astimezone(ZoneInfo("UTC")).isoformat()
+    assert ledger.connect_window_for_timestamp(stamp) == "evening"
+
+
+def test_connect_blocks_batches_outside_windows_without_opening_browser(linkedin_home):
+    import asyncio
+    from unittest.mock import patch
+
+    from tools.linkedin import actions
+
+    with patch.object(actions.ledger, "current_connect_window", return_value=None), patch.object(
+        actions, "open_page"
+    ) as open_page:
+        result = asyncio.run(
+            actions.connect(["https://www.linkedin.com/in/outside-window"])
+        )
+
+    assert result["status"] == "window_closed"
+    assert result["results"][0]["reason"] == "connect_window_closed"
+    open_page.assert_not_called()
+
+
+def test_connect_blocks_sixth_invitation_in_same_window(linkedin_home):
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from tools.linkedin import actions
+
+    class _PageContext:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *_args):
+            return False
+
+    with (
+        patch.object(actions.ledger, "current_connect_window", return_value="morning"),
+        patch.object(actions.ledger, "remaining_today", return_value=10),
+        patch.object(actions.ledger, "remaining_connect_window", return_value=2),
+        patch.object(actions.ledger, "already_done_today", return_value=False),
+        patch.object(actions.ledger, "append"),
+        patch.object(actions, "open_page", return_value=_PageContext()),
+        patch.object(
+            actions,
+            "_connect_one",
+            new=AsyncMock(
+                side_effect=[
+                    {"profile": "https://www.linkedin.com/in/p0", "result": "ok"},
+                    {"profile": "https://www.linkedin.com/in/p1", "result": "ok"},
+                ]
+            ),
+        ),
+    ):
+        result = asyncio.run(
+            actions.connect(
+                [
+                    "https://www.linkedin.com/in/p0",
+                    "https://www.linkedin.com/in/p1",
+                    "https://www.linkedin.com/in/p2",
+                ]
+            )
+        )
+
+    assert result["requested"] == 2
+    assert result["results"][2]["reason"] == "window_limit_reached"
 
 
 def test_ledger_idempotency_uses_canonical_url(linkedin_home):
@@ -208,7 +346,7 @@ def test_ledger_day_boundary_is_local_not_utc(linkedin_home):
             )
 
     assert ledger.count_today("connect") == 5
-    assert ledger.remaining_today("connect") == 0
+    assert ledger.remaining_today("connect") == 5
 
 
 def test_mark_synced_drains_the_queue(linkedin_home):
@@ -335,6 +473,81 @@ def test_ledger_pending_sync_queue(linkedin_home):
     pending = ledger.pending_sync()
     assert len(pending) == 1
     assert pending[0]["profile"] == "https://www.linkedin.com/in/a"
+
+
+def test_message_frame_search_prefers_live_preload_composer():
+    """The stale main-frame editor must not win over LinkedIn's live iframe."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from tools.linkedin import actions
+
+    class Frame:
+        def __init__(self, url):
+            self.url = url
+
+    main = Frame("https://www.linkedin.com/mynetwork/")
+    preload = Frame("https://www.linkedin.com/preload/?_bprMode=vanilla")
+
+    class Page:
+        main_frame = main
+        frames = [main, preload]
+
+    async def fake_first_visible(frame, *_args, **_kwargs):
+        return f"box:{frame.url}" if "/preload/" in frame.url else "stale-main-box"
+
+    with patch.object(actions, "first_visible", new=AsyncMock(side_effect=fake_first_visible)):
+        frame, found = asyncio.run(
+            actions._find_in_frames_with_frame(Page(), actions.MESSAGE_BOX_SELECTORS)
+        )
+
+    assert frame is preload
+    assert found == "box:https://www.linkedin.com/preload/?_bprMode=vanilla"
+
+
+def test_message_frame_search_polls_for_late_attached_preload_frame():
+    """A composer iframe attached after the click must still be discovered."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from tools.linkedin import actions
+
+    main = type("Frame", (), {"url": "https://www.linkedin.com/messaging/"})()
+    preload = type(
+        "Frame", (), {"url": "https://www.linkedin.com/preload/?_bprMode=vanilla"}
+    )()
+
+    class Page:
+        main_frame = main
+        calls = 0
+
+        @property
+        def frames(self):
+            self.calls += 1
+            return [main, preload] if self.calls > 1 else [main]
+
+    async def fake_first_visible(frame, *_args, **_kwargs):
+        return "live-box" if frame is preload else None
+
+    with (
+        patch.object(actions, "first_visible", new=AsyncMock(side_effect=fake_first_visible)),
+        patch.object(actions.humanize, "settle", new=AsyncMock()),
+    ):
+        frame, found = asyncio.run(
+            actions._find_in_frames_with_frame(
+                Page(), actions.MESSAGE_BOX_SELECTORS, timeout=100
+            )
+        )
+
+    assert frame is preload
+    assert found == "live-box"
+
+
+def test_connections_search_never_targets_global_navigation_search():
+    from tools.linkedin import selectors
+
+    assert "input[placeholder*='Pesquisar']" not in selectors.CONNECTIONS_SEARCH_SELECTORS
+    assert "input[placeholder*='Pesquisar nome']" in selectors.CONNECTIONS_SEARCH_SELECTORS
 
 
 # ---------------------------------------------------------------------------
@@ -1094,8 +1307,9 @@ def test_handler_status_reports_quota(linkedin_home):
     result = _call({"action": "status"})
 
     assert result["status"] == "ok"
-    assert result["remaining_today"]["connect"] == 5
+    assert result["remaining_today"]["connect"] == 10
     assert result["remaining_today"]["message"] == 5
+    assert result["remaining_connect_windows"] == {"morning": 5, "evening": 5}
 
 
 def test_handler_deduplicates_profiles(linkedin_home):

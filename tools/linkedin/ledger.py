@@ -5,6 +5,8 @@ fallback that lets the tool answer three questions without a round trip to
 an MCP server that may be down:
 
 1. How many invitations/messages have I already sent today? (quota)
+   Connection invitations also have independent 5-per-window caps: morning
+   07:00–10:00 and evening 19:00–20:00 in America/Sao_Paulo.
 2. Have I already acted on this profile today? (idempotency)
 3. Which actions still need writing back to HubSpot? (reconciliation)
 
@@ -18,7 +20,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+from datetime import datetime, time
 from typing import Iterable, Optional
 from zoneinfo import ZoneInfo
 
@@ -29,8 +31,15 @@ from tools.linkedin.utils import normalize_linkedin_url, utc_now_iso
 # recorded for the audit trail but never counted against a limit.
 QUOTA_ACTIONS = ("connect", "message")
 
-# Mirrors skills/sdr/skill-sdr/SKILL.md: 5 connections/day, 5 messages/day.
-DAILY_LIMITS = {"connect": 5, "message": 5}
+# Connection invitations have one daily cap and two independent operational
+# windows. The windows are deliberately narrow: the morning cron runs at 08h
+# and the evening cron runs at 19h, both in the ledger's local timezone.
+DAILY_LIMITS = {"connect": 10, "message": 5}
+CONNECT_WINDOW_LIMITS = {"morning": 5, "evening": 5}
+CONNECT_WINDOWS = {
+    "morning": (time(7, 0), time(10, 0)),
+    "evening": (time(19, 0), time(20, 0)),
+}
 
 SYNC_PENDING = "hubspot:pending"
 SYNC_SYNCED = "hubspot:synced"
@@ -53,16 +62,47 @@ _ROW_RE = re.compile(
 )
 
 
+def local_now() -> datetime:
+    """Current time in the operating timezone."""
+    return datetime.now(ZoneInfo(LOCAL_TZ_NAME))
+
+
 def local_today() -> str:
     """Today's date in the operating timezone, as ``YYYY-MM-DD``."""
-    return datetime.now(ZoneInfo(LOCAL_TZ_NAME)).strftime("%Y-%m-%d")
+    return local_now().strftime("%Y-%m-%d")
+
+
+def connect_window_for_local(value: datetime) -> Optional[str]:
+    """Return the connection window containing a local datetime, if any."""
+    local_value = value.astimezone(ZoneInfo(LOCAL_TZ_NAME)) if value.tzinfo else value
+    current = local_value.time().replace(tzinfo=None)
+    for name, (start, end) in CONNECT_WINDOWS.items():
+        if start <= current < end:
+            return name
+    return None
+
+
+def connect_window_for_timestamp(when_utc: str) -> Optional[str]:
+    """Map a stored UTC timestamp to the local connection window."""
+    try:
+        parsed = datetime.fromisoformat(when_utc.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=ZoneInfo("UTC"))
+    except ValueError:
+        return None
+    return connect_window_for_local(parsed.astimezone(ZoneInfo(LOCAL_TZ_NAME)))
+
+
+def current_connect_window() -> Optional[str]:
+    """Return the currently open connection window, if outbound is allowed."""
+    return connect_window_for_local(local_now())
 
 
 def _local_date_of(when_utc: str) -> str:
     """Convert a stored UTC timestamp to its local calendar date."""
     try:
         return (
-            datetime.fromisoformat(when_utc)
+            datetime.fromisoformat(when_utc.replace("Z", "+00:00"))
             .astimezone(ZoneInfo(LOCAL_TZ_NAME))
             .strftime("%Y-%m-%d")
         )
@@ -127,6 +167,32 @@ def count_today(action: str) -> int:
         for row in read_rows()
         if row["action"] == action and row["result"] == "ok"
     )
+
+
+def count_connect_window(window: str) -> int:
+    """Successful connection invitations in one local window today."""
+    if window not in CONNECT_WINDOW_LIMITS:
+        raise ValueError(f"Unknown connection window: {window!r}")
+    return sum(
+        1
+        for row in read_rows()
+        if row["action"] == "connect"
+        and row["result"] == "ok"
+        and connect_window_for_timestamp(row["when"]) == window
+    )
+
+
+def remaining_connect_window(window: str) -> int:
+    """Headroom left in one of today's connection windows."""
+    limit = CONNECT_WINDOW_LIMITS.get(window)
+    if limit is None:
+        raise ValueError(f"Unknown connection window: {window!r}")
+    return max(0, limit - count_connect_window(window))
+
+
+def remaining_connect_windows_today() -> dict[str, int]:
+    """Return independent headroom for the morning and evening windows."""
+    return {window: remaining_connect_window(window) for window in CONNECT_WINDOW_LIMITS}
 
 
 def remaining_today(action: str) -> int:

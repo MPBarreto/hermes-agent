@@ -19,8 +19,10 @@ by the project this was ported from:
 
 from __future__ import annotations
 
+import json
 import logging
 import random
+import time
 from typing import Any, Optional
 
 from tools.linkedin import humanize, ledger
@@ -392,18 +394,70 @@ async def connect(profiles: list[str]) -> dict:
     """Send connection invitations, always without a note.
 
     Notes are skipped deliberately: free accounts get a small monthly quota
-    of them and spending it does not measurably lift acceptance.
+    of them and spending it does not measurably lift acceptance. Invitations
+    are allowed only in the morning or evening operational window; the ledger
+    enforces both the daily cap and the active window cap.
     """
     results: list[dict] = []
-    quota = ledger.remaining_today("connect")
 
     with profile_lock("connect"):
+        window = ledger.current_connect_window()
+        if window is None:
+            results = [
+                {"profile": profile, "result": "skipped", "reason": "connect_window_closed"}
+                for profile in profiles
+            ]
+            return {
+                "status": "window_closed",
+                "action": "connect",
+                "connect_window": None,
+                "requested": 0,
+                "remaining_today": ledger.remaining_today("connect"),
+                "remaining_connect_window": 0,
+                "results": results,
+                "next_step": "Retry during the morning or 19:00–20:00 BRT connection window.",
+            }
+
+        daily_remaining = ledger.remaining_today("connect")
+        window_remaining = ledger.remaining_connect_window(window)
+        quota = min(daily_remaining, window_remaining)
+        exhausted_reason = (
+            "window_limit_reached"
+            if window_remaining <= daily_remaining
+            else "daily_limit_reached"
+        )
+
+        if quota <= 0:
+            results = [
+                {"profile": profile, "result": "skipped", "reason": exhausted_reason}
+                for profile in profiles
+            ]
+            return {
+                "status": "ok",
+                "action": "connect",
+                "connect_window": window,
+                "requested": 0,
+                "remaining_today": ledger.remaining_today("connect"),
+                "remaining_connect_window": ledger.remaining_connect_window(window),
+                "results": results,
+                "next_step": "Nothing to sync.",
+            }
+
+        # Do not open Chromium for a rejected batch. This is important for
+        # retries at the end of a window and for the sixth profile in a full
+        # five-invitations turn.
         async with open_page() as page:
             for index, profile in enumerate(profiles):
                 if quota <= 0:
                     results.append(
-                        {"profile": profile, "result": "skipped", "reason": "daily_limit_reached"}
+                        {"profile": profile, "result": "skipped", "reason": exhausted_reason}
                     )
+                    continue
+                if ledger.current_connect_window() != window:
+                    results.append(
+                        {"profile": profile, "result": "skipped", "reason": "connect_window_closed"}
+                    )
+                    quota = 0
                     continue
                 if ledger.already_done_today("connect", profile):
                     results.append(
@@ -437,8 +491,10 @@ async def connect(profiles: list[str]) -> dict:
     return {
         "status": "ok",
         "action": "connect",
+        "connect_window": window,
         "requested": sent,
         "remaining_today": ledger.remaining_today("connect"),
+        "remaining_connect_window": ledger.remaining_connect_window(window),
         "results": results,
         "next_step": (
             "For each result with result='ok', set the HubSpot contact's "
@@ -717,20 +773,102 @@ async def _open_thread_from_profile(page, profile: str) -> tuple[bool, str]:
     return True, "profile_page"
 
 
-async def _find_in_frames(page, selectors: list[str], timeout: int = 4000, last: bool = False):
-    """Find a control in any frame, main document first.
+def _ordered_frames(page) -> list[Any]:
+    """Return frames with LinkedIn's real conversation iframe first.
 
-    The conversation overlay lives in an iframe, so a plain page-level query
-    silently misses the composer and the Send button.
+    LinkedIn keeps a stale, hidden contenteditable in the top-level document
+    and renders the live composer in ``/preload/?_bprMode=vanilla``. Searching
+    the main frame first therefore types into the stale editor and leaves the
+    real Send button disabled, which surfaces as ``send_button_not_found``.
+    The preload frame must win whenever it is present; the main frame remains
+    a compatibility fallback for older layouts.
     """
-    for frame in [page.main_frame] + [f for f in page.frames if f is not page.main_frame]:
+    main = page.main_frame
+    frames = [main] + [frame for frame in page.frames if frame is not main]
+
+    def priority(frame: Any) -> int:
         try:
-            found = await first_visible(frame, selectors, timeout=timeout, last=last)
+            url = str(frame.url or "")
+        except Exception:
+            url = ""
+        if "/preload/" in url:
+            return 0
+        if frame is main:
+            return 1
+        return 2
+
+    return sorted(enumerate(frames), key=lambda item: (priority(item[1]), item[0]))
+
+
+async def _find_in_frames_with_frame(
+    page, selectors: list[str], timeout: int = 4000, last: bool = False
+):
+    """Find a control and return ``(frame, locator)`` for same-frame actions.
+
+    The conversation iframe is attached asynchronously after the message
+    button is clicked. A one-shot snapshot of ``page.frames`` can therefore
+    miss the live composer entirely and report ``message_box_not_found`` even
+    though it appears a moment later. Poll the frame list while keeping the
+    live ``/preload/`` frame ahead of the stale main-frame editor.
+    """
+    deadline = time.monotonic() + (timeout / 1000)
+    while True:
+        remaining_ms = max(100, int((deadline - time.monotonic()) * 1000))
+        for _, frame in _ordered_frames(page):
+            try:
+                found = await first_visible(
+                    frame, selectors, timeout=min(800, remaining_ms), last=last
+                )
+            except Exception:
+                continue
+            if found is not None:
+                return frame, found
+        if time.monotonic() >= deadline:
+            break
+        await humanize.settle(page, min(350, remaining_ms))
+    return None, None
+
+
+async def _find_in_frames(page, selectors: list[str], timeout: int = 4000, last: bool = False):
+    """Find a control in any frame, preferring LinkedIn's live composer iframe."""
+    _, found = await _find_in_frames_with_frame(page, selectors, timeout=timeout, last=last)
+    return found
+
+
+async def _send_debug_snapshot(page) -> dict[str, Any]:
+    """Capture compact composer state when Send cannot be located.
+
+    LinkedIn's messaging overlay is frequently rendered in a detached
+    `/preload/` frame. The normal HTML artifact omits that frame, so without
+    this snapshot every layout change collapses to the same opaque error.
+    """
+    snapshot: dict[str, Any] = {"frames": []}
+    for frame in _ordered_frames(page):
+        _, current = frame
+        try:
+            state = await current.evaluate("""() => ({
+                url: location.href,
+                boxes: Array.from(document.querySelectorAll(
+                    "[contenteditable='true'], textarea, [role='textbox']"
+                )).map((el) => ({
+                    text: (el.innerText || el.textContent || el.value || '').slice(0, 180),
+                    visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                    ariaDisabled: el.getAttribute('aria-disabled'),
+                })),
+                buttons: Array.from(document.querySelectorAll(
+                    'button, [role="button"]'
+                )).map((el) => ({
+                    text: (el.innerText || el.textContent || '').trim().slice(0, 100),
+                    aria: el.getAttribute('aria-label'),
+                    disabled: el.disabled === true || el.getAttribute('disabled') !== null,
+                    ariaDisabled: el.getAttribute('aria-disabled'),
+                    visible: !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+                })).filter((x) => x.text || x.aria),
+            })""")
+            snapshot["frames"].append(state)
         except Exception:
             continue
-        if found is not None:
-            return found
-    return None
+    return snapshot
 
 
 async def _expand_conversation(page) -> None:
@@ -762,7 +900,9 @@ async def _insert_and_send(page, text: str) -> None:
     """Type the message and press Send."""
     await _expand_conversation(page)
 
-    box = await _find_in_frames(page, MESSAGE_BOX_SELECTORS, timeout=6000)
+    composer_frame, box = await _find_in_frames_with_frame(
+        page, MESSAGE_BOX_SELECTORS, timeout=6000
+    )
     if box is None:
         raise RuntimeError("message_box_not_found")
 
@@ -771,26 +911,56 @@ async def _insert_and_send(page, text: str) -> None:
     except Exception:
         pass
 
-    # Type character by character. fill() drops the whole string in one
-    # event, which no keyboard can produce — a 400-character DM appearing
-    # instantaneously is a stronger signal than any delay between profiles.
+    # Prefer Playwright's sequential text insertion for contenteditable. It
+    # emits the browser input/composition events that LinkedIn's React editor
+    # uses to enable Send. The old per-character `press()` path could leave the
+    # visible draft on screen while React still considered the editor empty.
     try:
-        await humanize.type_like_human(box, text)
+        await box.click(timeout=5000, force=True)
+        await box.press_sequentially(text, delay=random.uniform(18, 55))
     except Exception:
         try:
-            await box.click(timeout=5000, force=True)
-            await box.fill(text, timeout=5000, force=True)
+            await humanize.type_like_human(box, text)
         except Exception:
-            # Rich-text editors reject fill(); drive the DOM directly.
+            try:
+                await box.click(timeout=5000, force=True)
+                await box.fill(text, timeout=5000, force=True)
+            except Exception:
+                # Last resort for rich-text editors: drive the DOM directly.
+                await box.evaluate(INSERT_TEXT_SCRIPT, text)
+    await humanize.settle(page, 1000)
+
+    # Sanity: confirm the compose box actually holds the text before looking
+    # for the Send button. If MESSAGE_BOX matched a fake contenteditable, the
+    # real composer stays empty and the send button stays disabled — observed
+    # 2026-08-13 (Eduardo/João: click landed on a disabled msg-form__send-button
+    # in the main document instead of the enabled one in /preload/ iframe).
+    try:
+        content = (await box.evaluate("el => el.textContent || ''")) or ""
+        normalized = text.strip().replace("\u00a0", " ")
+        if normalized not in content.replace("\n", " ").replace("\u00a0", " "):
             await box.evaluate(INSERT_TEXT_SCRIPT, text)
-    await humanize.settle(page, 800)
+            await humanize.settle(page, 600)
+    except Exception:
+        pass
 
     # A beat before sending — people re-read what they wrote.
     await humanize.pause(random.uniform(0.8, 3.0))
 
-    send = await _find_in_frames(page, SEND_BUTTON_SELECTORS, timeout=5000, last=True)
+    # Keep the Send lookup in the same frame as the editor. A global lookup can
+    # select a stale disabled control from the main document even after the
+    # text was entered into the live /preload/ composer.
+    send = await first_visible(composer_frame, SEND_BUTTON_SELECTORS, timeout=5000, last=True)
     if send is None:
-        raise RuntimeError("send_button_not_found")
+        # Layouts that move the button to a sibling frame still get a safe
+        # fallback, but the live composer frame is always tried first.
+        send = await _find_in_frames(page, SEND_BUTTON_SELECTORS, timeout=5000, last=True)
+    if send is None:
+        # Preserve the actual frame state in the error. The screenshot alone
+        # cannot tell whether the editor was filled, whether Send was
+        # aria-disabled, or whether LinkedIn moved the control to a new frame.
+        debug = await _send_debug_snapshot(page)
+        raise RuntimeError("send_button_not_found:" + json.dumps(debug, ensure_ascii=False)[:3500])
     await send.click(timeout=5000)
     await humanize.settle(page, 1800)
 

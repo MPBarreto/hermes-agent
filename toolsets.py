@@ -77,6 +77,8 @@ _HERMES_CORE_TOOLS = [
     "kanban_unblock",
     # Computer use (macOS, gated on cua-driver being installed via check_fn)
     "computer_use",
+    # TikTok API for Business OAuth (gated on TikTok client credentials)
+    "tiktok_oauth",
 ]
 
 # Webhook events may originate from untrusted third-party content (for example,
@@ -291,6 +293,12 @@ TOOLSETS = {
     "linkedin": {
         "description": "LinkedIn outbound: manual login, connection requests, acceptance checks, DMs",
         "tools": ["linkedin"],
+        "includes": [],
+    },
+
+    "tiktok": {
+        "description": "TikTok API for Business OAuth authorization and token lifecycle",
+        "tools": ["tiktok_oauth"],
         "includes": [],
     },
 

@@ -897,6 +897,12 @@ DEFAULT_CONFIG = {
     "providers": {},
     "fallback_providers": [],
     "credential_pool_strategies": {},
+    # TikTok API for Business OAuth. The redirect URI must be a public HTTPS
+    # callback accepted by TikTok; client credentials remain in .env.
+    "tiktok": {
+        "redirect_uri": "",
+        "scopes": [],
+    },
     "toolsets": ["hermes-cli"],
     # Global active chat session cap across CLI, TUI/dashboard, and messaging.
     # None/0 = unbounded.
@@ -3126,6 +3132,20 @@ OPTIONAL_ENV_VARS = {
         "password": True,
         "category": "provider",
         "advanced": True,
+    },
+    "TIKTOK_CLIENT_KEY": {
+        "description": "TikTok API for Business client key",
+        "prompt": "TikTok client key",
+        "url": "https://business-api.tiktok.com/portal/apps",
+        "password": False,
+        "category": "tool",
+    },
+    "TIKTOK_CLIENT_SECRET": {
+        "description": "TikTok API for Business client secret",
+        "prompt": "TikTok client secret",
+        "url": "https://business-api.tiktok.com/portal/apps",
+        "password": True,
+        "category": "tool",
     },
     "XAI_BASE_URL": {
         "description": "xAI base URL override",
